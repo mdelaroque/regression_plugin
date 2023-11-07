@@ -1,0 +1,18 @@
+[package]
+name = "expression_lib"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "expression_lib"
+crate-type = ["cdylib"]
+
+[dependencies]
+polars = { workspace = true, features = ["fmt", "dtype-date"], default-features = false }
+pyo3-polars = { version = "*", path = "../../../pyo3-polars", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+nalgebra = {version = "*"}
+
+[target.'cfg(target_os = "linux")'.dependencies]
+jemallocator = { version = "0.5", features = ["disable_initial_exec_tls"] }

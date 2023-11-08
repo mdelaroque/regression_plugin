@@ -62,6 +62,22 @@ class Regr:
                 is_elementwise=False,
             )
 
+    def ols_ndarray(self, *other: IntoExpr) -> pl.Expr:
+        return self._expr._register_plugin(
+                lib=lib,
+                args=other,
+                symbol='ols_ndarray',
+                is_elementwise=False,
+            )
+
+    def ols_solvenalgebra(self, *other: IntoExpr) -> pl.Expr:
+        return self._expr._register_plugin(
+                lib=lib,
+                args=other,
+                symbol='ols_solvenalgebra',
+                is_elementwise=False,
+            )
+
 
 @pl.api.register_expr_namespace("dist")
 class Distance:

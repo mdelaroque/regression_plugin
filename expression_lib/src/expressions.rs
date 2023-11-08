@@ -1,8 +1,10 @@
 use polars::prelude::*;
+use ndarray_linalg::LeastSquaresSvd;
+use ndarray::{Array2, ArrayView1};
 use pyo3_polars::derive::polars_expr;
 use serde::Deserialize;
 use std::fmt::Write;
-use nalgebra::{DMatrix, DVector};
+use nalgebra::{DMatrix, DVector, QR, SVD};
 //
 // #[polars_expr(output_type=Float64)]
 // fn ols(inputs: &[Series]) -> PolarsResult<Series> {
@@ -54,22 +56,33 @@ fn series_to_nalgebra_matrix(series_vec: &[Series]) -> Result<DMatrix<f64>, Pola
     Ok(matrix)
 }
 
+
+fn series_to_ndarray(series_vec: &[Series]) -> Result<Array2<f64>, PolarsError> {
+    // Ensure all series have the same length
+    let nrows = series_vec[0].len();
+
+    // Initialize an empty ndarray
+    let ncols = series_vec.len();
+    let mut array = Array2::<f64>::zeros((nrows, ncols));
+
+    // Fill the ndarray, column by column
+    for (idx, series) in series_vec.iter().enumerate() {
+        let column = series
+            .f64()?
+            .into_iter()
+            .map(|opt| opt.unwrap_or(0.0)) // Handle None values; adjust as needed
+            .collect::<Vec<f64>>();
+
+        // Insert the column into the ndarray
+        array.column_mut(idx).assign(&ArrayView1::from(&column));
+    }
+
+    Ok(array)
+}
+
 #[polars_expr(output_type=Float64)]
 fn ols(inputs: &[Series]) -> PolarsResult<Series> {
-    print!("{:#?}", inputs);
-    // let y = series_to_nalgebra_vector(&inputs[0]);
-    // let X = series_to_nalgebra_matrix(&inputs[1..]);
-    // // let x = inputs[1..].to_ndarray()?;
-    // print!("X:{:#?}", X);
-    // // print!("b:{:#?}", b);
-    // let X_transpose = X?.clone().transpose();
-    // let X_transpose_X = &X_transpose * &X?;
-    // let X_transpose_y = X_transpose * y?;
-    // // let beta = X_transpose_X.try_inverse().expect("Cannot compute inverse").unwrap() * X_transpose_y;
-    //
-    // // Output the coefficients
-    // println!("Coefficients: {:?}", X_transpose_y);
-    // Ok(Series::new("Results", &[0.]))
+    // print!("{:#?}", inputs);
 
     let y = series_to_nalgebra_vector(&inputs[0])?;
     let x = series_to_nalgebra_matrix(&inputs[1..])?;
@@ -85,11 +98,51 @@ fn ols(inputs: &[Series]) -> PolarsResult<Series> {
 
     // Convert the coefficients to a Polars Series
     let coefficients = Series::new("coefficients", beta.iter().cloned().collect::<Vec<f64>>());
-    println!("Coefficients: {:?}", coefficients);
+    // println!("Coefficients: {:?}", coefficients);
     // Ok(Series::new("Results", &[0.]))
     Ok(coefficients)
 
 }
+
+#[polars_expr(output_type=Float64)]
+fn ols_solvenalgebra(inputs: &[Series]) -> PolarsResult<Series> {
+    let y = series_to_nalgebra_vector(&inputs[0])?;
+    let x = series_to_nalgebra_matrix(&inputs[1..])?;
+    
+    // Perform QR decomposition on X
+    // Perform SVD on X
+    let svd = SVD::new(x, true, true);
+    
+    // Solve for beta using the SVD factors
+    let beta = svd.solve(&y, 1e-15) // Tolerance can be adjusted
+        .map_err(|_| PolarsError::ComputeError("SVD failed to solve the linear system".into()))?;
+
+    // Convert the coefficients to a Polars Series
+    let coefficients = Series::new("coefficients", beta.iter().cloned().collect::<Vec<f64>>());
+    Ok(coefficients)
+}
+
+#[polars_expr(output_type=Float64)]
+fn ols_ndarray(inputs: &[Series]) -> PolarsResult<Series> {
+    // Convert the input Series to ndarray
+    let y_vec = inputs[0].f64()?
+        .into_iter()
+        .map(|opt| opt.unwrap_or(0.0))
+        .collect::<Vec<f64>>();
+    let y = ArrayView1::from(&y_vec);
+    let x = series_to_ndarray(&inputs[1..])?;
+
+    // Compute the coefficients using least squares method
+    let results = x
+        .least_squares(&y)
+        .map_err(|e| PolarsError::ComputeError(e.to_string().into()))?;
+    let coefficients = Series::new("coefficients", results.solution.iter().cloned().collect::<Vec<f64>>());
+    // println!("Coefficients: {:?}", coefficients);
+    Ok(coefficients)
+}
+
+
+
 /// The `DefaultKwargs` isn't very ergonomic as it doesn't validate any schema.
 /// Provide your own kwargs struct with the proper schema and accept that type
 /// in your plugin expression.

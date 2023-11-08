@@ -32,13 +32,32 @@ print(df.sort(by="names"),"\n",out)
 
 # 2 Variable
 
-out = df.with_columns(pl.lit(1.).alias("intercept")).groupby("names").agg(
+out = df.lazy().with_columns(pl.lit(1.).alias("intercept")).groupby("names").agg(
     beta=pl.col("floats").multireg.ols(
         "floats2",
         pl.col("floats")**2,
         pl.col("intercept"),  ## Somehow adding one here kill the core
         # pl.lit(1.).alias("intercept"),  ## Somehow adding one here kill the core, looking at what is passed through to rust, it's only 1 float
         ),
-)
+).collect()
 print(df.sort(by="names"),"\n",out)
 
+out = df.lazy().with_columns(pl.lit(1.).alias("intercept")).groupby("names").agg(
+    beta=pl.col("floats").multireg.ols_ndarray(
+        "floats2",
+        pl.col("floats")**2,
+        pl.col("intercept"),  ## Somehow adding one here kill the core
+        # pl.lit(1.).alias("intercept"),  ## Somehow adding one here kill the core, looking at what is passed through to rust, it's only 1 float
+        ),
+).collect()
+print("\n",out)
+
+out = df.lazy().with_columns(pl.lit(1.).alias("intercept")).groupby("names").agg(
+    beta=pl.col("floats").multireg.ols_solvenalgebra(
+        "floats2",
+        pl.col("floats")**2,
+        pl.col("intercept"),  ## Somehow adding one here kill the core
+        # pl.lit(1.).alias("intercept"),  ## Somehow adding one here kill the core, looking at what is passed through to rust, it's only 1 float
+        ),
+).collect()
+print("\n",out)
